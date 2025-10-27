@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./icon.png",
+    "userInterfaceStyle": "light",
     "splash": {
       "image": "./adaptive-icon.png",
       "resizeMode": "contain",
@@ -13,7 +14,9 @@
     "assetBundlePatterns": ["**/*"],
     "android": {
       "package": "com.hotptt.wantdoer",
-      "versionCode": 1
-    }
+      "versionCode": 1,
+      "permissions": []
+    },
+    "platforms": ["android"]
   }
 }
