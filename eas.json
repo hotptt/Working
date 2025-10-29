@@ -2,8 +2,14 @@
   "cli": { "version": ">= 3.18.0" },
   "build": {
     "production": {
-      "android": { "image": "latest" }
+      "android": {
+        "image": "latest",
+        "autoIncrement": "versionCode"
+      },
+      "env": {}
     }
   },
-  "submit": { "production": {} }
+  "submit": {
+    "production": {}
+  }
 }
