@@ -6,17 +6,35 @@
     "orientation": "portrait",
     "icon": "./icon.png",
     "userInterfaceStyle": "light",
+
     "splash": {
       "image": "./adaptive-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
+
     "assetBundlePatterns": ["**/*"],
+
     "android": {
       "package": "com.hotptt.wantdoer",
       "versionCode": 1,
-      "permissions": []
+      "permissions": [],
+      "statusBar": {
+        "hidden": true
+      }
     },
+
+    "androidStatusBar": {
+      "hidden": true,
+      "backgroundColor": "#000000"
+    },
+
+    "extra": {
+      "eas": {
+        "projectId": "여기에-네-EAS-프로젝트ID-붙여넣기"
+      }
+    },
+
     "platforms": ["android"]
   }
 }
