@@ -1,10 +1,9 @@
 {
-  "cli": { "version": ">= 5.0.0" },
+  "cli": { "version": ">= 3.18.0" },
   "build": {
     "production": {
-      "android": {
-        "buildType": "apk"
-      }
+      "android": { "image": "latest" }
     }
-  }
+  },
+  "submit": { "production": {} }
 }
