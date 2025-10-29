@@ -7,6 +7,27 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
 
+import { useEffect } from "react";
+import { StatusBar } from "expo-status-bar";
+import * as NavigationBar from "expo-navigation-bar";
+
+export default function App() {
+  useEffect(() => {
+    // 상단 상태바 숨김 (app.json에도 넣었지만 런타임에서도 확실히)
+    // <StatusBar hidden /> 로도 보강
+    NavigationBar.setVisibilityAsync("hidden");
+    NavigationBar.setBehaviorAsync("overlay-swipe"); // 스와이프로 잠깐 호출 가능
+  }, []);
+
+  return (
+    <>
+      <StatusBar hidden />
+      {/* 너의 기존 화면 컴포넌트 */}
+    </>
+  );
+}
+
+
 // ---------- Util ----------
 const uid = () => Math.random().toString(36).slice(2);
 const now = () => Date.now();
