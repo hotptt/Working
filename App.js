@@ -11,29 +11,12 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   useWindowDimensions,
-  Platform
+  Platform,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
-import { StatusBar } from "expo-status-bar"; // Expo 버전만 사용
+import { StatusBar } from "expo-status-bar"; // Expo 전용
 import * as NavigationBar from "expo-navigation-bar";
-
-export default function App() {
-  useEffect(() => {
-    // 상단 상태바 숨김 (app.json에도 넣었지만 런타임에서도 확실히)
-    // <StatusBar hidden /> 로도 보강
-    NavigationBar.setVisibilityAsync("hidden");
-    NavigationBar.setBehaviorAsync("overlay-swipe"); // 스와이프로 잠깐 호출 가능
-  }, []);
-
-  return (
-    <>
-      <StatusBar hidden />
-      {/* 너의 기존 화면 컴포넌트 */}
-    </>
-  );
-}
-
 
 // ---------- Util ----------
 const uid = () => Math.random().toString(36).slice(2);
@@ -95,14 +78,12 @@ function agentAssist(title) {
 export default function App() {
   const [desires, setDesires] = useState([]);
   const [draft, setDraft] = useState("");
-  // 필터는 진행중/완료만
   const [filter, setFilter] = useState("active"); // "active" | "done"
   const [focus, setFocus] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const stepInputRef = useRef(null);
   const [stepDraft, setStepDraft] = useState("");
 
-  // S24 대응 스케일
   const { width, height } = useWindowDimensions();
   const isSmall = width < 380;
   const isTall = height > 760;
@@ -111,51 +92,82 @@ export default function App() {
   const titleFont = isSmall ? 18 : 20;
 
   // 데이터 로드/저장
-  useEffect(() => { loadDesires().then(setDesires); }, []);
-  useEffect(() => { saveDesires(desires); }, [desires]);
+  useEffect(() => {
+    loadDesires().then(setDesires);
+  }, []);
+  useEffect(() => {
+    saveDesires(desires);
+  }, [desires]);
 
-  // 상단바(시간/배터리) 숨김 — Android에서 전체화면
-  // iOS는 정책상 완전 숨김이 제한적이므로 그대로 둔다.
+  // 네비게이션 바(하단) 숨김 - 안드로이드 전용
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      (async () => {
+        try {
+          await NavigationBar.setVisibilityAsync("hidden");
+          await NavigationBar.setBehaviorAsync("overlay-swipe");
+        } catch {
+          // 일부 기기/버전에서 미지원일 수 있음 -> 조용히 무시
+        }
+      })();
+    }
+  }, []);
+
   const statusBarHidden = Platform.OS === "android";
 
-  const filtered = useMemo(() => {
-    return desires.filter(d => (filter === "active" ? d.status !== "done" : d.status === "done"));
-  }, [desires, filter]);
+  const filtered = useMemo(
+    () =>
+      desires.filter((d) =>
+        filter === "active" ? d.status !== "done" : d.status === "done"
+      ),
+    [desires, filter]
+  );
 
   const addDesire = () => {
     const title = draft.trim();
     if (!title) return;
     const d = { id: uid(), title, createdAt: now(), status: "active", steps: [], notes: "" };
-    setDesires(prev => [d, ...prev]);
+    setDesires((prev) => [d, ...prev]);
     setDraft("");
   };
 
-  const openDesire = (d) => { setFocus(d); setModalOpen(true); };
+  const openDesire = (d) => {
+    setFocus(d);
+    setModalOpen(true);
+  };
 
-  // 완료/되돌리기만 제공
   const markDone = (id) => {
-    setDesires(prev => prev.map(d => d.id === id ? { ...d, status: "done" } : d));
+    setDesires((prev) => prev.map((d) => (d.id === id ? { ...d, status: "done" } : d)));
     if (focus && focus.id === id) setFocus({ ...focus, status: "done" });
   };
   const markActive = (id) => {
-    setDesires(prev => prev.map(d => d.id === id ? { ...d, status: "active" } : d));
+    setDesires((prev) => prev.map((d) => (d.id === id ? { ...d, status: "active" } : d)));
     if (focus && focus.id === id) setFocus({ ...focus, status: "active" });
   };
 
   const removeDesire = (id) => {
-    setDesires(prev => prev.filter(d => d.id !== id));
-    if (focus?.id === id) { setModalOpen(false); setFocus(null); }
+    setDesires((prev) => prev.filter((d) => d.id !== id));
+    if (focus?.id === id) {
+      setModalOpen(false);
+      setFocus(null);
+    }
   };
 
   const toggleStep = (desireId, stepId) => {
-    setDesires(prev => prev.map(d => d.id !== desireId ? d : {
-      ...d,
-      steps: d.steps.map(s => s.id === stepId ? { ...s, done: !s.done } : s)
-    }));
+    setDesires((prev) =>
+      prev.map((d) =>
+        d.id !== desireId
+          ? d
+          : {
+              ...d,
+              steps: d.steps.map((s) => (s.id === stepId ? { ...s, done: !s.done } : s)),
+            }
+      )
+    );
     if (focus?.id === desireId) {
       const updated = {
         ...focus,
-        steps: focus.steps.map(s => s.id === stepId ? { ...s, done: !s.done } : s)
+        steps: focus.steps.map((s) => (s.id === stepId ? { ...s, done: !s.done } : s)),
       };
       setFocus(updated);
     }
@@ -165,31 +177,36 @@ export default function App() {
     const trimmed = text.trim();
     if (!trimmed) return;
     const step = { id: uid(), text: trimmed, done: false, source: "user" };
-    setDesires(prev => prev.map(d => d.id === desireId ? { ...d, steps: [...d.steps, step] } : d));
+    setDesires((prev) =>
+      prev.map((d) => (d.id === desireId ? { ...d, steps: [...d.steps, step] } : d))
+    );
     if (focus?.id === desireId) setFocus({ ...focus, steps: [...focus.steps, step] });
     setStepDraft("");
     if (stepInputRef.current) stepInputRef.current.clear();
   };
 
   const addAgentHelp = (desireId) => {
-    const d = desires.find(x => x.id === desireId);
+    const d = desires.find((x) => x.id === desireId);
     if (!d) return;
     const result = agentAssist(d.title);
-    const exists = new Set(d.steps.map(s => s.text));
+    const exists = new Set(d.steps.map((s) => s.text));
     const merged = [...d.steps];
-    result.steps.forEach(s => { if (!exists.has(s.text)) merged.push(s); });
-    const updated = desires.map(x => x.id !== desireId ? x : { ...x, steps: merged });
+    result.steps.forEach((s) => {
+      if (!exists.has(s.text)) merged.push(s);
+    });
+    const updated = desires.map((x) => (x.id !== desireId ? x : { ...x, steps: merged }));
     setDesires(updated);
     if (focus?.id === desireId) setFocus({ ...d, steps: merged });
     Alert.alert("AI 제안 완료", "체크리스트가 추가됐어. 필요 없는 건 길게 눌러 지워.");
   };
 
   const removeStep = (desireId, stepId) => {
-    setDesires(prev => prev.map(d => d.id === desireId ? { ...d, steps: d.steps.filter(s => s.id !== stepId) } : d));
-    if (focus?.id === desireId) setFocus({ ...focus, steps: focus.steps.filter(s => s.id !== stepId) });
+    setDesires((prev) =>
+      prev.map((d) => (d.id === desireId ? { ...d, steps: d.steps.filter((s) => s.id !== stepId) } : d))
+    );
+    if (focus?.id === desireId) setFocus({ ...focus, steps: focus.steps.filter((s) => s.id !== stepId) });
   };
 
-  // ---------- UI ----------
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }}>
       {/* 상단 상태바 숨김 */}
@@ -204,7 +221,7 @@ export default function App() {
           </Text>
         </View>
         <View style={{ flexDirection: "row" }}>
-          {["active", "done"].map(k => (
+          {["active", "done"].map((k) => (
             <TouchableOpacity
               key={k}
               onPress={() => setFilter(k)}
@@ -215,7 +232,7 @@ export default function App() {
                 backgroundColor: filter === k ? "#0f172a" : "#111827",
                 marginLeft: isSmall ? 4 : 6,
                 borderWidth: 1,
-                borderColor: "#1f2937"
+                borderColor: "#1f2937",
               }}
             >
               <Text style={{ color: filter === k ? "white" : "#e5e7eb", fontSize: isSmall ? 11 : 12 }}>
@@ -236,9 +253,15 @@ export default function App() {
             onChangeText={setDraft}
             onSubmitEditing={addDesire}
             style={{
-              flex: 1, backgroundColor: "#111827", borderRadius: 12,
-              paddingHorizontal: isSmall ? 10 : 12, paddingVertical: isSmall ? 8 : 10,
-              borderWidth: 1, borderColor: "#1f2937", color: "#f8fafc", fontSize: baseFont
+              flex: 1,
+              backgroundColor: "#111827",
+              borderRadius: 12,
+              paddingHorizontal: isSmall ? 10 : 12,
+              paddingVertical: isSmall ? 8 : 10,
+              borderWidth: 1,
+              borderColor: "#1f2937",
+              color: "#f8fafc",
+              fontSize: baseFont,
             }}
           />
           <TouchableOpacity
@@ -246,8 +269,9 @@ export default function App() {
             style={{
               backgroundColor: "#0f172a",
               paddingHorizontal: isSmall ? 12 : 14,
-              borderRadius: 12, justifyContent: "center",
-              marginLeft: isSmall ? 6 : 8
+              borderRadius: 12,
+              justifyContent: "center",
+              marginLeft: isSmall ? 6 : 8,
             }}
           >
             <Feather name="plus" size={18} color="white" />
@@ -258,7 +282,7 @@ export default function App() {
       {/* List */}
       <FlatList
         data={filtered}
-        keyExtractor={item => item.id}
+        keyExtractor={(item) => item.id}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ padding: basePad, paddingBottom: basePad + 24 }}
         ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
@@ -266,16 +290,23 @@ export default function App() {
           <TouchableOpacity
             onPress={() => openDesire(item)}
             style={{
-              backgroundColor: "#0b1220", borderRadius: 16, padding: 12,
-              borderWidth: 1, borderColor: "#111827"
+              backgroundColor: "#0b1220",
+              borderRadius: 16,
+              padding: 12,
+              borderWidth: 1,
+              borderColor: "#111827",
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <View style={{ flexDirection: "row", alignItems: "center", paddingRight: 8 }}>
-                <View style={{
-                  width: 8, height: 8, borderRadius: 999,
-                  backgroundColor: item.status === "done" ? "#10b981" : "#3b82f6"
-                }} />
+                <View
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 999,
+                    backgroundColor: item.status === "done" ? "#10b981" : "#3b82f6",
+                  }}
+                />
                 <Text style={{ color: "#e5e7eb", fontWeight: "600", marginLeft: 8, fontSize: isSmall ? 14 : 16 }}>
                   {item.title}
                 </Text>
@@ -283,18 +314,22 @@ export default function App() {
               <Feather name="chevron-right" size={18} color="#9ca3af" />
             </View>
             <Text style={{ color: "#9ca3af", fontSize: isSmall ? 11 : 12, marginTop: 6 }}>
-              {new Date(item.createdAt).toLocaleString()} • 스텝 {item.steps.filter(s => s.done).length}/{item.steps.length}
+              {new Date(item.createdAt).toLocaleString("ko-KR")} • 스텝 {item.steps.filter((s) => s.done).length}/{item.steps.length}
             </Text>
             {/* 완료/되돌리기 */}
             <View style={{ flexDirection: "row", marginTop: 8 }}>
               {item.status !== "done" ? (
-                <TouchableOpacity onPress={() => markDone(item.id)}
-                  style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#10b981", borderRadius: 10, marginRight: 6 }}>
+                <TouchableOpacity
+                  onPress={() => markDone(item.id)}
+                  style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#10b981", borderRadius: 10, marginRight: 6 }}
+                >
                   <Text style={{ color: "white", fontSize: isSmall ? 11 : 12 }}>완료</Text>
                 </TouchableOpacity>
               ) : (
-                <TouchableOpacity onPress={() => markActive(item.id)}
-                  style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#374151", borderRadius: 10, marginRight: 6 }}>
+                <TouchableOpacity
+                  onPress={() => markActive(item.id)}
+                  style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#374151", borderRadius: 10, marginRight: 6 }}
+                >
                   <Text style={{ color: "white", fontSize: isSmall ? 11 : 12 }}>되돌리기</Text>
                 </TouchableOpacity>
               )}
@@ -304,11 +339,7 @@ export default function App() {
             </View>
           </TouchableOpacity>
         )}
-        ListEmptyComponent={
-          <Text style={{ textAlign: "center", color: "#94a3b8", marginTop: 40 }}>
-            아직 없다. 적어. 손이 머리를 이긴다.
-          </Text>
-        }
+        ListEmptyComponent={<Text style={{ textAlign: "center", color: "#94a3b8", marginTop: 40 }}>아직 없다. 적어. 손이 머리를 이긴다.</Text>}
       />
 
       {/* Detail Modal */}
@@ -326,21 +357,22 @@ export default function App() {
             </View>
 
             <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-              <ScrollView
-                contentContainerStyle={{ padding: basePad, paddingBottom: (isTall ? basePad + 60 : basePad + 40) }}
-                keyboardShouldPersistTaps="handled"
-              >
+              <ScrollView contentContainerStyle={{ padding: basePad, paddingBottom: isTall ? basePad + 60 : basePad + 40 }} keyboardShouldPersistTaps="handled">
                 {/* 완료/되돌리기 */}
                 <View style={{ flexDirection: "row" }}>
                   {focus.status !== "done" ? (
-                    <TouchableOpacity onPress={() => markDone(focus.id)}
-                      style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#10b981", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8 }}>
+                    <TouchableOpacity
+                      onPress={() => markDone(focus.id)}
+                      style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#10b981", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8 }}
+                    >
                       <Feather name="check" size={16} color="white" />
                       <Text style={{ color: "white", marginLeft: 6, fontSize: baseFont }}>완료</Text>
                     </TouchableOpacity>
                   ) : (
-                    <TouchableOpacity onPress={() => markActive(focus.id)}
-                      style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#374151", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8 }}>
+                    <TouchableOpacity
+                      onPress={() => markActive(focus.id)}
+                      style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#374151", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8 }}
+                    >
                       <Feather name="corner-up-left" size={16} color="white" />
                       <Text style={{ color: "white", marginLeft: 6, fontSize: baseFont }}>되돌리기</Text>
                     </TouchableOpacity>
@@ -351,13 +383,17 @@ export default function App() {
                 <View style={{ marginTop: 16, borderWidth: 1, borderColor: "#111827", borderRadius: 14, padding: 12, backgroundColor: "#0b1220" }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                     <Text style={{ fontWeight: "600", fontSize: baseFont + 1, color: "#f8fafc" }}>체크리스트</Text>
-                    <TouchableOpacity onPress={() => addAgentHelp(focus.id)} style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#0f172a", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 }}>
-                      <Feather name="sparkles" size={14} color="white" />
+                    <TouchableOpacity
+                      onPress={() => addAgentHelp(focus.id)}
+                      style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#0f172a", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 }}
+                    >
+                      {/* sparkles -> star 로 교체 */}
+                      <Feather name="star" size={14} color="white" />
                       <Text style={{ color: "white", marginLeft: 6, fontSize: isSmall ? 11 : 12 }}>도와줘</Text>
                     </TouchableOpacity>
                   </View>
 
-                  {focus.steps.map(s => (
+                  {focus.steps.map((s) => (
                     <TouchableOpacity
                       key={s.id}
                       onPress={() => toggleStep(focus.id, s.id)}
@@ -365,12 +401,16 @@ export default function App() {
                       style={{ flexDirection: "row", alignItems: "center", marginTop: 10 }}
                     >
                       <Feather name={s.done ? "check-square" : "square"} size={18} color={s.done ? "#10b981" : "#e5e7eb"} />
-                      <Text style={{
-                        marginLeft: 8, color: s.done ? "#94a3b8" : "#e5e7eb",
-                        textDecorationLine: s.done ? "line-through" : "none",
-                        fontSize: baseFont
-                      }}>
-                        {s.text}{s.source === "agent" ? " (AI)" : ""}
+                      <Text
+                        style={{
+                          marginLeft: 8,
+                          color: s.done ? "#94a3b8" : "#e5e7eb",
+                          textDecorationLine: s.done ? "line-through" : "none",
+                          fontSize: baseFont,
+                        }}
+                      >
+                        {s.text}
+                        {s.source === "agent" ? " (AI)" : ""}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -384,9 +424,15 @@ export default function App() {
                       onChangeText={setStepDraft}
                       onSubmitEditing={() => addStep(focus.id, stepDraft)}
                       style={{
-                        flex: 1, borderWidth: 1, borderColor: "#1f2937", borderRadius: 10,
-                        paddingHorizontal: isSmall ? 8 : 10, paddingVertical: isSmall ? 6 : 8, color: "#f8fafc", fontSize: baseFont,
-                        backgroundColor: "#0f172a"
+                        flex: 1,
+                        borderWidth: 1,
+                        borderColor: "#1f2937",
+                        borderRadius: 10,
+                        paddingHorizontal: isSmall ? 8 : 10,
+                        paddingVertical: isSmall ? 6 : 8,
+                        color: "#f8fafc",
+                        fontSize: baseFont,
+                        backgroundColor: "#0f172a",
                       }}
                     />
                     <TouchableOpacity
@@ -407,18 +453,29 @@ export default function App() {
                     placeholderTextColor="#94a3b8"
                     value={focus.notes ?? ""}
                     onChangeText={(txt) => {
-                      setDesires(prev => prev.map(d => d.id === focus.id ? { ...d, notes: txt } : d));
+                      setDesires((prev) => prev.map((d) => (d.id === focus.id ? { ...d, notes: txt } : d)));
                       setFocus({ ...focus, notes: txt });
                     }}
                     style={{
-                      marginTop: 8, minHeight: 120, borderWidth: 1, borderColor: "#1f2937", borderRadius: 10,
-                      padding: 10, color: "#f8fafc", textAlignVertical: "top", fontSize: baseFont, backgroundColor: "#0f172a"
+                      marginTop: 8,
+                      minHeight: 120,
+                      borderWidth: 1,
+                      borderColor: "#1f2937",
+                      borderRadius: 10,
+                      padding: 10,
+                      color: "#f8fafc",
+                      textAlignVertical: "top",
+                      fontSize: baseFont,
+                      backgroundColor: "#0f172a",
                     }}
                   />
                 </View>
 
                 {/* 삭제 */}
-                <TouchableOpacity onPress={() => removeDesire(focus.id)} style={{ marginTop: 20, alignSelf: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "#fee2e2" }}>
+                <TouchableOpacity
+                  onPress={() => removeDesire(focus.id)}
+                  style={{ marginTop: 20, alignSelf: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "#fee2e2" }}
+                >
                   <Text style={{ color: "#991b1b", fontSize: baseFont }}>이 항목 삭제</Text>
                 </TouchableOpacity>
               </ScrollView>
