@@ -1,14 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  SafeAreaView, View, Text, TextInput, TouchableOpacity,
-  FlatList, Modal, Alert, KeyboardAvoidingView, ScrollView,
-  useWindowDimensions, StatusBar, Platform
+  SafeAreaView,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  FlatList,
+  Modal,
+  Alert,
+  KeyboardAvoidingView,
+  ScrollView,
+  useWindowDimensions,
+  Platform
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
-
-import { useEffect } from "react";
-import { StatusBar } from "expo-status-bar";
+import { StatusBar } from "expo-status-bar"; // Expo 버전만 사용
 import * as NavigationBar from "expo-navigation-bar";
 
 export default function App() {
