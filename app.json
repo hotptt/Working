@@ -5,10 +5,10 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
 
     "splash": {
-      "image": "./adaptive-icon.png",
+      "image": "./splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -19,14 +19,22 @@
       "package": "com.hotptt.wantdoer",
       "versionCode": 1,
       "permissions": [],
-      "statusBar": {
-        "hidden": true
+      "adaptiveIcon": {
+        "foregroundImage": "./adaptive-icon.png",
+        "backgroundColor": "#000000"
       }
     },
 
     "androidStatusBar": {
       "hidden": true,
-      "backgroundColor": "#000000"
+      "backgroundColor": "#000000",
+      "barStyle": "light-content"
+    },
+
+    "androidNavigationBar": {
+      "backgroundColor": "#000000",
+      "barStyle": "light-content",
+      "visible": "immersive"
     },
 
     "extra": {
