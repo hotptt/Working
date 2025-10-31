@@ -6,10 +6,25 @@
         "image": "latest",
         "autoIncrement": "versionCode"
       },
-      "env": {}
+      "env": {
+        "EXPO_PUBLIC_ENV": "production"
+      }
+    },
+    "preview": {
+      "android": {
+        "image": "latest",
+        "autoIncrement": false
+      },
+      "env": {
+        "EXPO_PUBLIC_ENV": "preview"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "internal"
+      }
+    }
   }
 }
