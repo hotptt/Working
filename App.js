@@ -1,492 +1,242 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  SafeAreaView,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  FlatList,
-  Modal,
-  Alert,
-  KeyboardAvoidingView,
-  ScrollView,
-  useWindowDimensions,
-  Platform,
+  SafeAreaView, View, Text, TextInput, TouchableOpacity,
+  FlatList, Modal, Pressable, KeyboardAvoidingView, Platform
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Feather } from "@expo/vector-icons";
-import { StatusBar } from "expo-status-bar"; // Expo 전용
+import { StatusBar } from "expo-status-bar";
 import * as NavigationBar from "expo-navigation-bar";
+import { Feather } from "@expo/vector-icons";
 
-// ---------- Util ----------
-const uid = () => Math.random().toString(36).slice(2);
-const now = () => Date.now();
-const STORAGE_KEY = "desires_v1_mobile";
+const STORAGE_KEY = "TASKS_V2";
+const CATS = [
+  { key: "now", label: "당장" },
+  { key: "info", label: "정보" },
+  { key: "someday", label: "언젠가" },
+  { key: "done", label: "완료" },
+];
 
-// ---------- Storage ----------
-async function loadDesires() {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-async function saveDesires(data) {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
-
-// ---------- Mock Agent ----------
-function agentAssist(title) {
-  const t = (title || "").toLowerCase();
-  const steps = [];
-
-  if (/(앱|app|프로토타입|prototype)/.test(t)) {
-    steps.push(
-      { id: uid(), text: "문제 정의 한 줄로 요약", done: false, source: "agent" },
-      { id: uid(), text: "MVP 기능 3개만 선정", done: false, source: "agent" },
-      { id: uid(), text: "와이어프레임(종이/피그마) 30분", done: false, source: "agent" },
-      { id: uid(), text: "단일 화면부터 코딩 시작", done: false, source: "agent" }
-    );
-  }
-  if (/(영어|english|토익|toeic)/.test(t)) {
-    steps.push(
-      { id: uid(), text: "현재 레벨 측정(모의/단어)", done: false, source: "agent" },
-      { id: uid(), text: "목표 점수/기간 확정", done: false, source: "agent" },
-      { id: uid(), text: "매일 30분(단어/리스닝)", done: false, source: "agent" }
-    );
-  }
-  if (/(운동|헬스|체지방|런닝|러닝|달리기)/.test(t)) {
-    steps.push(
-      { id: uid(), text: "주 3회 20분 일정 고정", done: false, source: "agent" },
-      { id: uid(), text: "첫 주 목표: 2회 완료", done: false, source: "agent" },
-      { id: uid(), text: "기록(시간/체감난이도)", done: false, source: "agent" }
-    );
-  }
-  if (steps.length === 0) {
-    steps.push(
-      { id: uid(), text: "한 줄 요약 작성", done: false, source: "agent" },
-      { id: uid(), text: "성공 조건 1개 정의", done: false, source: "agent" },
-      { id: uid(), text: "첫 15분 행동 1개", done: false, source: "agent" }
-    );
-  }
-
-  return { steps };
-}
-
-// ---------- App ----------
 export default function App() {
-  const [desires, setDesires] = useState([]);
-  const [draft, setDraft] = useState("");
-  const [filter, setFilter] = useState("active"); // "active" | "done"
-  const [focus, setFocus] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
-  const stepInputRef = useRef(null);
-  const [stepDraft, setStepDraft] = useState("");
+  const [tasks, setTasks] = useState([]);
+  const [input, setInput] = useState("");
+  const [selectedCat, setSelectedCat] = useState("now");     // 기본 탭 = 당장
+  const [modalTask, setModalTask] = useState(null);
 
-  const { width, height } = useWindowDimensions();
-  const isSmall = width < 380;
-  const isTall = height > 760;
-  const basePad = isSmall ? 12 : 16;
-  const baseFont = isSmall ? 13 : 14;
-  const titleFont = isSmall ? 18 : 20;
-
-  // 데이터 로드/저장
+  // 네비게이션바 숨김
   useEffect(() => {
-    loadDesires().then(setDesires);
-  }, []);
-  useEffect(() => {
-    saveDesires(desires);
-  }, [desires]);
-
-  // 네비게이션 바(하단) 숨김 - 안드로이드 전용
-  useEffect(() => {
-    if (Platform.OS === "android") {
-      (async () => {
-        try {
-          await NavigationBar.setVisibilityAsync("hidden");
-          await NavigationBar.setBehaviorAsync("overlay-swipe");
-        } catch {
-          // 일부 기기/버전에서 미지원일 수 있음 -> 조용히 무시
-        }
-      })();
-    }
+    NavigationBar.setVisibilityAsync("hidden");
+    NavigationBar.setBehaviorAsync("overlay-swipe");
   }, []);
 
-  const statusBarHidden = Platform.OS === "android";
+  // 로드
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(STORAGE_KEY);
+        if (raw) setTasks(JSON.parse(raw));
+      } catch {}
+    })();
+  }, []);
 
-  const filtered = useMemo(
-    () =>
-      desires.filter((d) =>
-        filter === "active" ? d.status !== "done" : d.status === "done"
-      ),
-    [desires, filter]
+  // 저장
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)).catch(() => {});
+  }, [tasks]);
+
+  // 신규 추가: 기본 카테고리 = "now" (=> 당장 탭에 바로 보임)
+  const addTask = () => {
+    const text = input.trim();
+    if (!text) return;
+    const t = {
+      id: String(Date.now()),
+      text,
+      done: false,
+      createdAt: Date.now(),
+      category: "now",               // ★ 핵심: 기본 now
+    };
+    setTasks(prev => [t, ...prev]);
+    setInput("");
+    setSelectedCat("now");           // 탭 유지
+  };
+
+  const openTask = (t) => setModalTask(t);
+  const closeModal = () => setModalTask(null);
+
+  const toggleDone = (id) => {
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
+    // 완료로 바뀌면 완료 탭으로 스냅
+    const target = tasks.find(t => t.id === id);
+    if (target && !target.done) setSelectedCat("done");
+  };
+
+  const setCategory = (id, cat) => {
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, category: cat, done: false } : t));
+    setSelectedCat(cat);
+    closeModal();
+  };
+
+  const removeTask = (id) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
+    closeModal();
+  };
+
+  // 탭 필터
+  const filtered = useMemo(() => {
+    if (selectedCat === "done") return tasks.filter(t => t.done);
+    return tasks.filter(t => !t.done && t.category === selectedCat);
+  }, [tasks, selectedCat]);
+
+  const TaskItem = ({ item }) => (
+    <TouchableOpacity
+      onPress={() => openTask(item)}
+      onLongPress={() => removeTask(item.id)}
+      style={{
+        padding: 16, marginVertical: 6, borderRadius: 14,
+        backgroundColor: item.done ? "#e6ffe6" : "#eef2ff",
+        borderWidth: 1, borderColor: item.done ? "#b7f0b7" : "#c7d2fe"
+      }}>
+      <Text style={{ fontSize: 17, fontWeight: "600", opacity: item.done ? 0.6 : 1 }}>
+        {item.text}
+      </Text>
+      <Text style={{ marginTop: 4, fontSize: 12, opacity: 0.6 }}>
+        {item.done ? "완료" : ({ now: "당장", info: "정보", someday: "언젠가" }[item.category])}
+      </Text>
+    </TouchableOpacity>
   );
-
-  const addDesire = () => {
-    const title = draft.trim();
-    if (!title) return;
-    const d = { id: uid(), title, createdAt: now(), status: "active", steps: [], notes: "" };
-    setDesires((prev) => [d, ...prev]);
-    setDraft("");
-  };
-
-  const openDesire = (d) => {
-    setFocus(d);
-    setModalOpen(true);
-  };
-
-  const markDone = (id) => {
-    setDesires((prev) => prev.map((d) => (d.id === id ? { ...d, status: "done" } : d)));
-    if (focus && focus.id === id) setFocus({ ...focus, status: "done" });
-  };
-  const markActive = (id) => {
-    setDesires((prev) => prev.map((d) => (d.id === id ? { ...d, status: "active" } : d)));
-    if (focus && focus.id === id) setFocus({ ...focus, status: "active" });
-  };
-
-  const removeDesire = (id) => {
-    setDesires((prev) => prev.filter((d) => d.id !== id));
-    if (focus?.id === id) {
-      setModalOpen(false);
-      setFocus(null);
-    }
-  };
-
-  const toggleStep = (desireId, stepId) => {
-    setDesires((prev) =>
-      prev.map((d) =>
-        d.id !== desireId
-          ? d
-          : {
-              ...d,
-              steps: d.steps.map((s) => (s.id === stepId ? { ...s, done: !s.done } : s)),
-            }
-      )
-    );
-    if (focus?.id === desireId) {
-      const updated = {
-        ...focus,
-        steps: focus.steps.map((s) => (s.id === stepId ? { ...s, done: !s.done } : s)),
-      };
-      setFocus(updated);
-    }
-  };
-
-  const addStep = (desireId, text) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    const step = { id: uid(), text: trimmed, done: false, source: "user" };
-    setDesires((prev) =>
-      prev.map((d) => (d.id === desireId ? { ...d, steps: [...d.steps, step] } : d))
-    );
-    if (focus?.id === desireId) setFocus({ ...focus, steps: [...focus.steps, step] });
-    setStepDraft("");
-    if (stepInputRef.current) stepInputRef.current.clear();
-  };
-
-  const addAgentHelp = (desireId) => {
-    const d = desires.find((x) => x.id === desireId);
-    if (!d) return;
-    const result = agentAssist(d.title);
-    const exists = new Set(d.steps.map((s) => s.text));
-    const merged = [...d.steps];
-    result.steps.forEach((s) => {
-      if (!exists.has(s.text)) merged.push(s);
-    });
-    const updated = desires.map((x) => (x.id !== desireId ? x : { ...x, steps: merged }));
-    setDesires(updated);
-    if (focus?.id === desireId) setFocus({ ...d, steps: merged });
-    Alert.alert("AI 제안 완료", "체크리스트가 추가됐어. 필요 없는 건 길게 눌러 지워.");
-  };
-
-  const removeStep = (desireId, stepId) => {
-    setDesires((prev) =>
-      prev.map((d) => (d.id === desireId ? { ...d, steps: d.steps.filter((s) => s.id !== stepId) } : d))
-    );
-    if (focus?.id === desireId) setFocus({ ...focus, steps: focus.steps.filter((s) => s.id !== stepId) });
-  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }}>
-      {/* 상단 상태바 숨김 */}
-      <StatusBar hidden={statusBarHidden} />
+      <StatusBar style="light" hidden />
 
-      {/* Header */}
-      <View style={{ padding: basePad, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Feather name="zap" size={20} color="#e2e8f0" />
-          <Text style={{ fontSize: titleFont, fontWeight: "700", color: "#f8fafc", marginLeft: 8 }}>
-            원하는-일 처리기
-          </Text>
-        </View>
-        <View style={{ flexDirection: "row" }}>
-          {["active", "done"].map((k) => (
-            <TouchableOpacity
-              key={k}
-              onPress={() => setFilter(k)}
-              style={{
-                paddingVertical: isSmall ? 6 : 7,
-                paddingHorizontal: isSmall ? 9 : 10,
-                borderRadius: 14,
-                backgroundColor: filter === k ? "#0f172a" : "#111827",
-                marginLeft: isSmall ? 4 : 6,
-                borderWidth: 1,
-                borderColor: "#1f2937",
-              }}
-            >
-              <Text style={{ color: filter === k ? "white" : "#e5e7eb", fontSize: isSmall ? 11 : 12 }}>
-                {k === "active" ? "진행중" : "완료"}
-              </Text>
-            </TouchableOpacity>
-          ))}
+      {/* 헤더 + 탭 */}
+      <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 8 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={{ color: "white", fontSize: 22, fontWeight: "800" }}>원하는-일 처리기</Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {CATS.map(c => (
+              <Pressable
+                key={c.key}
+                onPress={() => setSelectedCat(c.key)}
+                style={{
+                  paddingVertical: 6, paddingHorizontal: 10, borderRadius: 12,
+                  backgroundColor: selectedCat === c.key ? "#111827" : "#1f2937"
+                }}>
+                <Text style={{ color: "white", fontWeight: "700", fontSize: 12 }}>{c.label}</Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
       </View>
 
-      {/* Input */}
-      <View style={{ paddingHorizontal: basePad }}>
-        <View style={{ flexDirection: "row" }}>
+      {/* 입력 */}
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <View style={{ paddingHorizontal: 18, flexDirection: "row", gap: 8 }}>
           <TextInput
-            placeholder="예: 앱 프로토타입 / 체지방 15% / 영어 리스닝 20분"
-            placeholderTextColor="#94a3b8"
-            value={draft}
-            onChangeText={setDraft}
-            onSubmitEditing={addDesire}
+            value={input}
+            onChangeText={setInput}
+            placeholder="무엇을 추가할까?"
+            placeholderTextColor="#9ca3af"
             style={{
-              flex: 1,
-              backgroundColor: "#111827",
-              borderRadius: 12,
-              paddingHorizontal: isSmall ? 10 : 12,
-              paddingVertical: isSmall ? 8 : 10,
-              borderWidth: 1,
-              borderColor: "#1f2937",
-              color: "#f8fafc",
-              fontSize: baseFont,
+              flex: 1, backgroundColor: "#111827", color: "white",
+              borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16
             }}
+            returnKeyType="done"
+            onSubmitEditing={addTask}
           />
           <TouchableOpacity
-            onPress={addDesire}
+            onPress={addTask}
             style={{
-              backgroundColor: "#0f172a",
-              paddingHorizontal: isSmall ? 12 : 14,
-              borderRadius: 12,
-              justifyContent: "center",
-              marginLeft: isSmall ? 6 : 8,
-            }}
-          >
-            <Feather name="plus" size={18} color="white" />
+              backgroundColor: "#22c55e", paddingHorizontal: 16, borderRadius: 14,
+              justifyContent: "center", alignItems: "center"
+            }}>
+            <Feather name="plus" size={22} color="white" />
           </TouchableOpacity>
         </View>
+      </KeyboardAvoidingView>
+
+      {/* 리스트 */}
+      <View style={{ flex: 1, paddingHorizontal: 18, paddingTop: 10 }}>
+        <FlatList
+          data={filtered}
+          keyExtractor={(t) => t.id}
+          renderItem={TaskItem}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <Text style={{ color: "#9ca3af", marginTop: 30, textAlign: "center" }}>
+              {selectedCat === "done" ? "완료한 항목이 없어요." : "이 카테고리에 항목이 없어요."}
+            </Text>
+          }
+        />
       </View>
 
-      {/* List */}
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ padding: basePad, paddingBottom: basePad + 24 }}
-        ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            onPress={() => openDesire(item)}
-            style={{
-              backgroundColor: "#0b1220",
-              borderRadius: 16,
-              padding: 12,
-              borderWidth: 1,
-              borderColor: "#111827",
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <View style={{ flexDirection: "row", alignItems: "center", paddingRight: 8 }}>
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 999,
-                    backgroundColor: item.status === "done" ? "#10b981" : "#3b82f6",
-                  }}
-                />
-                <Text style={{ color: "#e5e7eb", fontWeight: "600", marginLeft: 8, fontSize: isSmall ? 14 : 16 }}>
-                  {item.title}
-                </Text>
-              </View>
-              <Feather name="chevron-right" size={18} color="#9ca3af" />
-            </View>
-            <Text style={{ color: "#9ca3af", fontSize: isSmall ? 11 : 12, marginTop: 6 }}>
-              {new Date(item.createdAt).toLocaleString("ko-KR")} • 스텝 {item.steps.filter((s) => s.done).length}/{item.steps.length}
-            </Text>
-            {/* 완료/되돌리기 */}
-            <View style={{ flexDirection: "row", marginTop: 8 }}>
-              {item.status !== "done" ? (
-                <TouchableOpacity
-                  onPress={() => markDone(item.id)}
-                  style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#10b981", borderRadius: 10, marginRight: 6 }}
-                >
-                  <Text style={{ color: "white", fontSize: isSmall ? 11 : 12 }}>완료</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  onPress={() => markActive(item.id)}
-                  style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#374151", borderRadius: 10, marginRight: 6 }}
-                >
-                  <Text style={{ color: "white", fontSize: isSmall ? 11 : 12 }}>되돌리기</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={() => removeDesire(item.id)} style={{ paddingHorizontal: 8, justifyContent: "center" }}>
-                <Feather name="trash-2" size={18} color="#e5e7eb" />
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        )}
-        ListEmptyComponent={<Text style={{ textAlign: "center", color: "#94a3b8", marginTop: 40 }}>아직 없다. 적어. 손이 머리를 이긴다.</Text>}
-      />
+      {/* 상세 모달 */}
+      <Modal visible={!!modalTask} animationType="slide" transparent onRequestClose={closeModal}>
+        <View style={{
+          flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end"
+        }}>
+          <View style={{
+            backgroundColor: "#0b0b0b", padding: 18, borderTopLeftRadius: 16, borderTopRightRadius: 16
+          }}>
+            {modalTask && (
+              <>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ color: "white", fontSize: 18, fontWeight: "800" }}>
+                    항목 상세
+                  </Text>
 
-      {/* Detail Modal */}
-      {focus && (
-        <Modal visible={modalOpen} animationType="slide" onRequestClose={() => setModalOpen(false)}>
-          <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }}>
-            <StatusBar hidden={statusBarHidden} />
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: basePad, borderBottomWidth: 1, borderColor: "#111827" }}>
-              <Text style={{ fontWeight: "700", fontSize: isSmall ? 17 : 18, color: "#f8fafc" }} numberOfLines={1}>
-                {focus.title}
-              </Text>
-              <TouchableOpacity onPress={() => setModalOpen(false)}>
-                <Feather name="x" size={22} color="#e5e7eb" />
-              </TouchableOpacity>
-            </View>
-
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-              <ScrollView contentContainerStyle={{ padding: basePad, paddingBottom: isTall ? basePad + 60 : basePad + 40 }} keyboardShouldPersistTaps="handled">
-                {/* 완료/되돌리기 */}
-                <View style={{ flexDirection: "row" }}>
-                  {focus.status !== "done" ? (
+                  {/* 상단 우측: 완료 + 3버튼 */}
+                  <View style={{ flexDirection: "row", gap: 8 }}>
                     <TouchableOpacity
-                      onPress={() => markDone(focus.id)}
-                      style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#10b981", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8 }}
-                    >
-                      <Feather name="check" size={16} color="white" />
-                      <Text style={{ color: "white", marginLeft: 6, fontSize: baseFont }}>완료</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      onPress={() => markActive(focus.id)}
-                      style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#374151", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8 }}
-                    >
-                      <Feather name="corner-up-left" size={16} color="white" />
-                      <Text style={{ color: "white", marginLeft: 6, fontSize: baseFont }}>되돌리기</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-
-                {/* 체크리스트 */}
-                <View style={{ marginTop: 16, borderWidth: 1, borderColor: "#111827", borderRadius: 14, padding: 12, backgroundColor: "#0b1220" }}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                    <Text style={{ fontWeight: "600", fontSize: baseFont + 1, color: "#f8fafc" }}>체크리스트</Text>
-                    <TouchableOpacity
-                      onPress={() => addAgentHelp(focus.id)}
-                      style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#0f172a", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 }}
-                    >
-                      {/* sparkles -> star 로 교체 */}
-                      <Feather name="star" size={14} color="white" />
-                      <Text style={{ color: "white", marginLeft: 6, fontSize: isSmall ? 11 : 12 }}>도와줘</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {focus.steps.map((s) => (
-                    <TouchableOpacity
-                      key={s.id}
-                      onPress={() => toggleStep(focus.id, s.id)}
-                      onLongPress={() => removeStep(focus.id, s.id)}
-                      style={{ flexDirection: "row", alignItems: "center", marginTop: 10 }}
-                    >
-                      <Feather name={s.done ? "check-square" : "square"} size={18} color={s.done ? "#10b981" : "#e5e7eb"} />
-                      <Text
-                        style={{
-                          marginLeft: 8,
-                          color: s.done ? "#94a3b8" : "#e5e7eb",
-                          textDecorationLine: s.done ? "line-through" : "none",
-                          fontSize: baseFont,
-                        }}
-                      >
-                        {s.text}
-                        {s.source === "agent" ? " (AI)" : ""}
+                      onPress={() => { toggleDone(modalTask.id); closeModal(); }}
+                      style={{ backgroundColor: "#22c55e", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10 }}>
+                      <Text style={{ color: "white", fontWeight: "800" }}>
+                        {modalTask.done ? "취소" : "완료"}
                       </Text>
                     </TouchableOpacity>
-                  ))}
 
-                  <View style={{ flexDirection: "row", marginTop: 12 }}>
-                    <TextInput
-                      ref={stepInputRef}
-                      placeholder="스텝 추가"
-                      placeholderTextColor="#94a3b8"
-                      value={stepDraft}
-                      onChangeText={setStepDraft}
-                      onSubmitEditing={() => addStep(focus.id, stepDraft)}
-                      style={{
-                        flex: 1,
-                        borderWidth: 1,
-                        borderColor: "#1f2937",
-                        borderRadius: 10,
-                        paddingHorizontal: isSmall ? 8 : 10,
-                        paddingVertical: isSmall ? 6 : 8,
-                        color: "#f8fafc",
-                        fontSize: baseFont,
-                        backgroundColor: "#0f172a",
-                      }}
-                    />
-                    <TouchableOpacity
-                      onPress={() => addStep(focus.id, stepDraft)}
-                      style={{ borderWidth: 1, borderColor: "#374151", borderRadius: 10, paddingHorizontal: 12, justifyContent: "center", marginLeft: isSmall ? 6 : 8 }}
-                    >
-                      <Text style={{ color: "#e5e7eb", fontSize: baseFont }}>추가</Text>
-                    </TouchableOpacity>
+                    {["now","info","someday"].map(c => (
+                      <TouchableOpacity
+                        key={c}
+                        onPress={() => setCategory(modalTask.id, c)}
+                        style={{
+                          backgroundColor: modalTask.category === c ? "#111827" : "#1f2937",
+                          paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10
+                        }}>
+                        <Text style={{ color: "white", fontWeight: "800" }}>
+                          {c==="now"?"당장":c==="info"?"정보":"언젠가"}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 </View>
 
-                {/* 메모 */}
-                <View style={{ marginTop: 16, borderWidth: 1, borderColor: "#111827", borderRadius: 14, padding: 12, backgroundColor: "#0b1220" }}>
-                  <Text style={{ fontWeight: "600", fontSize: baseFont + 1, color: "#f8fafc" }}>메모</Text>
-                  <TextInput
-                    multiline
-                    placeholder="생각을 던져 넣어라. 흐릿한 아이디어도 기록하면 칼이 된다."
-                    placeholderTextColor="#94a3b8"
-                    value={focus.notes ?? ""}
-                    onChangeText={(txt) => {
-                      setDesires((prev) => prev.map((d) => (d.id === focus.id ? { ...d, notes: txt } : d)));
-                      setFocus({ ...focus, notes: txt });
-                    }}
-                    style={{
-                      marginTop: 8,
-                      minHeight: 120,
-                      borderWidth: 1,
-                      borderColor: "#1f2937",
-                      borderRadius: 10,
-                      padding: 10,
-                      color: "#f8fafc",
-                      textAlignVertical: "top",
-                      fontSize: baseFont,
-                      backgroundColor: "#0f172a",
-                    }}
-                  />
+                <View style={{ marginTop: 14, padding: 14, backgroundColor: "#111827", borderRadius: 12 }}>
+                  <Text style={{ color: "white", fontSize: 16 }}>{modalTask.text}</Text>
+                  <Text style={{ color: "#9ca3af", marginTop: 6, fontSize: 12 }}>
+                    상태: {modalTask.done ? "완료" : "진행중"} · 분류: {
+                      modalTask.done ? "완료" :
+                      ({ now: "당장", info: "정보", someday: "언젠가" }[modalTask.category] || "-")
+                    }
+                  </Text>
                 </View>
 
-                {/* 삭제 */}
-                <TouchableOpacity
-                  onPress={() => removeDesire(focus.id)}
-                  style={{ marginTop: 20, alignSelf: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "#fee2e2" }}
-                >
-                  <Text style={{ color: "#991b1b", fontSize: baseFont }}>이 항목 삭제</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            </KeyboardAvoidingView>
-          </SafeAreaView>
-        </Modal>
-      )}
-
-      <Text style={{ textAlign: "center", color: "#9ca3af", marginBottom: 12, fontSize: baseFont }}>
-        "적었다면 움직여라." — Shut up, Show up.
-      </Text>
+                <View style={{ marginTop: 14, flexDirection: "row", gap: 10 }}>
+                  <TouchableOpacity
+                    onPress={() => { removeTask(modalTask.id); }}
+                    style={{ backgroundColor: "#ef4444", paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10 }}>
+                    <Text style={{ color: "white", fontWeight: "800" }}>삭제</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={closeModal}
+                    style={{ backgroundColor: "#374151", paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10 }}>
+                    <Text style={{ color: "white", fontWeight: "800" }}>닫기</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
-}
+    }
