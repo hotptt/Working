@@ -230,7 +230,7 @@ export default function App() {
   );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }} edges={["top", "left", "right"]}>
+  <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }} edges={["top", "bottom", "left", "right"]}>
       {/* 전체화면 해제: 상태바 보이기 */}
       <StatusBar style="light" />
 
