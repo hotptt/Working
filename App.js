@@ -8,7 +8,7 @@ import React, {
   memo,
 } from "react";
 import {
- View,
+  View,
   Text,
   TextInput,
   TouchableOpacity,
@@ -16,7 +16,7 @@ import {
   Modal,
   Pressable,
   KeyboardAvoidingView,
-  Platform
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -48,8 +48,55 @@ const fmtDate = (ts) => {
   return `${yyyy}. ${mm}. ${dd}. ${ampm} ${String(h).padStart(2, "0")}:${mi}`;
 };
 
-// 카드 컴포넌트 (메모이제이션)
+/* ------------------------- 작은 컴포넌트: 스텝 입력 ------------------------- */
+const AddStepInput = memo(function AddStepInput({ onSubmit }) {
+  const [txt, setTxt] = useState("");
+  const fire = () => {
+    const v = txt.trim();
+    if (!v) return;
+    onSubmit(v);
+    setTxt("");
+  };
+  return (
+    <View style={{ flexDirection: "row", marginTop: 10 }}>
+      <TextInput
+        value={txt}
+        onChangeText={setTxt}
+        placeholder="스텝 추가"
+        placeholderTextColor="#6b7280"
+        style={{
+          flex: 1,
+          backgroundColor: "#111827",
+          color: "white",
+          borderRadius: 10,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          fontSize: 14,
+        }}
+        returnKeyType="done"
+        onSubmitEditing={fire}
+      />
+      <TouchableOpacity
+        onPress={fire}
+        style={{
+          backgroundColor: "#475569",
+          paddingHorizontal: 14,
+          borderRadius: 10,
+          marginLeft: 8,
+          justifyContent: "center",
+        }}
+      >
+        <Text style={{ color: "white", fontWeight: "700" }}>추가</Text>
+      </TouchableOpacity>
+    </View>
+  );
+});
+
+/* ------------------------- 카드 컴포넌트 ------------------------- */
 const TaskItem = memo(function TaskItem({ item, onOpen, onDone, onRemove }) {
+  const doneCnt = (item.checklist?.filter((s) => s.done).length) ?? 0;
+  const totalCnt = (item.checklist?.length) ?? 0;
+
   return (
     <View
       style={{
@@ -92,8 +139,7 @@ const TaskItem = memo(function TaskItem({ item, onOpen, onDone, onRemove }) {
 
       {/* 중간: 날짜 • 스텝 */}
       <Text style={{ color: "#9ca3af", marginTop: 8, fontSize: 12 }}>
-        {fmtDate(item.createdAt)} • 스텝 {item?.steps?.done ?? 0}/
-        {item?.steps?.total ?? 0}
+        {fmtDate(item.createdAt)} • 스텝 {doneCnt}/{totalCnt}
       </Text>
 
       {/* 하단: 완료 버튼 + 휴지통 */}
@@ -129,6 +175,7 @@ const TaskItem = memo(function TaskItem({ item, onOpen, onDone, onRemove }) {
   );
 });
 
+/* ------------------------- 메인 ------------------------- */
 export default function App() {
   const [tasks, setTasks] = useState([]);
   const [input, setInput] = useState("");
@@ -155,7 +202,7 @@ export default function App() {
     return () => clearTimeout(saveTimer.current);
   }, [tasks]);
 
-  // 추가(기본 단기)
+  // 추가(기본 단기) + 상세 필드 기본값
   const addTask = useCallback(() => {
     const text = input.trim();
     if (!text) return;
@@ -165,7 +212,8 @@ export default function App() {
       done: false,
       createdAt: Date.now(),
       category: "short",
-      steps: { done: 0, total: 0 },
+      checklist: [], // [{ text, done }]
+      memo: "",
     };
     setTasks((prev) => [t, ...prev]);
     setInput("");
@@ -175,19 +223,16 @@ export default function App() {
   const openTask = useCallback((t) => setModalTask(t), []);
   const closeModal = useCallback(() => setModalTask(null), []);
 
-  const toggleDone = useCallback(
-    (id) => {
-      setTasks((prev) => {
-        const before = prev.find((t) => t.id === id);
-        const next = prev.map((t) =>
-          t.id === id ? { ...t, done: !t.done } : t
-        );
-        if (before && !before.done) setSelectedCat("done");
-        return next;
-      });
-    },
-    [setTasks]
-  );
+  const toggleDone = useCallback((id) => {
+    setTasks((prev) => {
+      const before = prev.find((t) => t.id === id);
+      const next = prev.map((t) =>
+        t.id === id ? { ...t, done: !t.done } : t
+      );
+      if (before && !before.done) setSelectedCat("done");
+      return next;
+    });
+  }, []);
 
   const setCategory = useCallback(
     (id, cat) => {
@@ -210,13 +255,52 @@ export default function App() {
     [closeModal]
   );
 
+  // 체크리스트 & 메모 조작
+  const addStepToTask = useCallback((id, text) => {
+    const v = text.trim();
+    if (!v) return;
+    setTasks((prev) =>
+      prev.map((x) =>
+        x.id === id
+          ? { ...x, checklist: [...(x.checklist ?? []), { text: v, done: false }] }
+          : x
+      )
+    );
+  }, []);
+
+  const toggleStepDone = useCallback((id, idx) => {
+    setTasks((prev) =>
+      prev.map((x) => {
+        if (x.id !== id) return x;
+        const list = [...(x.checklist ?? [])];
+        list[idx] = { ...list[idx], done: !list[idx].done };
+        return { ...x, checklist: list };
+      })
+    );
+  }, []);
+
+  const removeStep = useCallback((id, idx) => {
+    setTasks((prev) =>
+      prev.map((x) => {
+        if (x.id !== id) return x;
+        const list = [...(x.checklist ?? [])];
+        list.splice(idx, 1);
+        return { ...x, checklist: list };
+      })
+    );
+  }, []);
+
+  const updateMemo = useCallback((id, text) => {
+    setTasks((prev) => prev.map((x) => (x.id === id ? { ...x, memo: text } : x)));
+  }, []);
+
   // 탭 필터
   const filtered = useMemo(() => {
     if (selectedCat === "done") return tasks.filter((t) => t.done);
     return tasks.filter((t) => !t.done && t.category === selectedCat);
   }, [tasks, selectedCat]);
 
-  // 렌더러 (메모된 TaskItem에 콜백 전달)
+  // 렌더러
   const renderItem = useCallback(
     ({ item }) => (
       <TaskItem
@@ -230,8 +314,11 @@ export default function App() {
   );
 
   return (
-  <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }} edges={["top", "bottom", "left", "right"]}>
-      {/* 전체화면 해제: 상태바 보이기 */}
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: "#000" }}
+      edges={["top", "bottom", "left", "right"]}
+    >
+      {/* 상태바 표시 */}
       <StatusBar style="light" />
 
       {/* 헤더 + 탭 */}
@@ -258,7 +345,7 @@ export default function App() {
                   borderRadius: 12,
                   backgroundColor:
                     selectedCat === c.key ? "#111827" : "#1f2937",
-                  marginLeft: idx === 0 ? 0 : 8, // gap 호환
+                  marginLeft: idx === 0 ? 0 : 8,
                 }}
               >
                 <Text
@@ -273,9 +360,7 @@ export default function App() {
       </View>
 
       {/* 입력 */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={{ paddingHorizontal: 18, flexDirection: "row" }}>
           <TextInput
             value={input}
@@ -321,9 +406,7 @@ export default function App() {
           removeClippedSubviews
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
-            <Text
-              style={{ color: "#9ca3af", marginTop: 30, textAlign: "center" }}
-            >
+            <Text style={{ color: "#9ca3af", marginTop: 30, textAlign: "center" }}>
               {selectedCat === "done"
                 ? "완료한 항목이 없어요."
                 : "이 카테고리에 항목이 없어요."}
@@ -332,7 +415,7 @@ export default function App() {
         />
       </View>
 
-      {/* 상세 모달 (카드형, 풀스크린 X) */}
+      {/* 상세 모달 */}
       <Modal
         visible={!!modalTask}
         animationType="slide"
@@ -356,6 +439,7 @@ export default function App() {
           >
             {modalTask && (
               <>
+                {/* 상단: 제목 + 완료/분류 버튼 */}
                 <View
                   style={{
                     flexDirection: "row",
@@ -363,13 +447,10 @@ export default function App() {
                     alignItems: "center",
                   }}
                 >
-                  <Text
-                    style={{ color: "white", fontSize: 18, fontWeight: "800" }}
-                  >
+                  <Text style={{ color: "white", fontSize: 18, fontWeight: "800" }}>
                     항목 상세
                   </Text>
 
-                  {/* 상단 우측: 완료 + (단기/정보/장기) */}
                   <View style={{ flexDirection: "row" }}>
                     <TouchableOpacity
                       onPress={() => {
@@ -398,7 +479,7 @@ export default function App() {
                           paddingVertical: 6,
                           paddingHorizontal: 10,
                           borderRadius: 10,
-                          marginLeft: 8, // gap 호환
+                          marginLeft: 8,
                         }}
                       >
                         <Text style={{ color: "white", fontWeight: "800" }}>
@@ -409,6 +490,7 @@ export default function App() {
                   </View>
                 </View>
 
+                {/* 본문: 제목 박스 */}
                 <View
                   style={{
                     marginTop: 14,
@@ -426,6 +508,91 @@ export default function App() {
                   </Text>
                 </View>
 
+                {/* 체크리스트 */}
+                <View style={{ backgroundColor: "#0f172a", borderRadius: 12, padding: 14, marginTop: 14 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ color: "white", fontSize: 16, fontWeight: "800" }}>
+                      체크리스트
+                    </Text>
+                  </View>
+
+                  <View style={{ marginTop: 10 }}>
+                    {(modalTask.checklist ?? []).map((s, idx) => (
+                      <View
+                        key={idx}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          paddingVertical: 8,
+                        }}
+                      >
+                        <Pressable
+                          onPress={() => toggleStepDone(modalTask.id, idx)}
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: 6,
+                            borderWidth: 2,
+                            borderColor: s.done ? "#22c55e" : "#334155",
+                            backgroundColor: s.done ? "#22c55e" : "transparent",
+                            justifyContent: "center",
+                            alignItems: "center",
+                            marginRight: 10,
+                          }}
+                        >
+                          {s.done ? <Feather name="check" size={16} color="white" /> : null}
+                        </Pressable>
+
+                        <Text
+                          style={{
+                            flex: 1,
+                            color: "white",
+                            fontSize: 15,
+                            textDecorationLine: s.done ? "line-through" : "none",
+                            opacity: s.done ? 0.6 : 1,
+                          }}
+                        >
+                          {s.text}
+                        </Text>
+
+                        <Pressable onPress={() => removeStep(modalTask.id, idx)}>
+                          <Feather name="x" size={18} color="#94a3b8" />
+                        </Pressable>
+                      </View>
+                    ))}
+                  </View>
+
+                  <AddStepInput
+                    onSubmit={(txt) => addStepToTask(modalTask.id, txt)}
+                  />
+                </View>
+
+                {/* 메모 */}
+                <View style={{ backgroundColor: "#0f172a", borderRadius: 12, padding: 14, marginTop: 14 }}>
+                  <Text style={{ color: "white", fontSize: 16, fontWeight: "800" }}>
+                    메모
+                  </Text>
+                  <TextInput
+                    value={modalTask.memo ?? ""}
+                    onChangeText={(t) => updateMemo(modalTask.id, t)}
+                    placeholder="생각을 던져 넣어라. 흐릿한 아이디어라도 기록하면 칼이 된다."
+                    placeholderTextColor="#6b7280"
+                    multiline
+                    style={{
+                      marginTop: 10,
+                      minHeight: 90,
+                      color: "white",
+                      backgroundColor: "#111827",
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      textAlignVertical: "top",
+                      fontSize: 14,
+                    }}
+                  />
+                </View>
+
+                {/* 하단 버튼들 */}
                 <View style={{ marginTop: 14, flexDirection: "row" }}>
                   <TouchableOpacity
                     onPress={() => removeTask(modalTask.id)}
@@ -437,7 +604,7 @@ export default function App() {
                     }}
                   >
                     <Text style={{ color: "white", fontWeight: "800" }}>
-                      삭제
+                      이 항목 삭제
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
