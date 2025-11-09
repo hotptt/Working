@@ -1,5 +1,12 @@
 // App.js
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+  memo,
+} from "react";
 import {
   SafeAreaView,
   View,
@@ -14,51 +21,142 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
-import * as NavigationBar from "expo-navigation-bar";
 import { Feather } from "@expo/vector-icons";
 
-// 저장 키
 const STORAGE_KEY = "TASKS_V2";
 
-// 탭 정의
+// 탭: 단기/정보/장기/완료
 const CATS = [
-  { key: "now", label: "당장" },
+  { key: "short", label: "단기" },
   { key: "info", label: "정보" },
-  { key: "someday", label: "언젠가" },
+  { key: "long", label: "장기" },
   { key: "done", label: "완료" },
 ];
+
+const LABEL = { short: "단기", info: "정보", long: "장기" };
+
+// 날짜 포맷
+const fmtDate = (ts) => {
+  const d = new Date(ts);
+  let h = d.getHours();
+  const ampm = h >= 12 ? "오후" : "오전";
+  h = h % 12 || 12;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${yyyy}. ${mm}. ${dd}. ${ampm} ${String(h).padStart(2, "0")}:${mi}`;
+};
+
+// 카드 컴포넌트 (메모이제이션)
+const TaskItem = memo(function TaskItem({ item, onOpen, onDone, onRemove }) {
+  return (
+    <View
+      style={{
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        marginVertical: 8,
+        borderRadius: 16,
+        backgroundColor: "#0f172a",
+        borderWidth: 1,
+        borderColor: "#1e293b",
+      }}
+    >
+      {/* 상단: 왼쪽 파랑점 + 제목 + 화살표 */}
+      <TouchableOpacity
+        onPress={() => onOpen(item)}
+        style={{ flexDirection: "row", alignItems: "center" }}
+      >
+        <View
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 999,
+            backgroundColor: "#3b82f6",
+            marginRight: 8,
+          }}
+        />
+        <Text
+          style={{
+            flex: 1,
+            color: "white",
+            fontSize: 18,
+            fontWeight: "700",
+          }}
+          numberOfLines={1}
+        >
+          {item.text}
+        </Text>
+        <Feather name="chevron-right" size={22} color="#8b9bb0" />
+      </TouchableOpacity>
+
+      {/* 중간: 날짜 • 스텝 */}
+      <Text style={{ color: "#9ca3af", marginTop: 8, fontSize: 12 }}>
+        {fmtDate(item.createdAt)} • 스텝 {item?.steps?.done ?? 0}/
+        {item?.steps?.total ?? 0}
+      </Text>
+
+      {/* 하단: 완료 버튼 + 휴지통 */}
+      <View
+        style={{
+          marginTop: 12,
+          flexDirection: "row",
+          alignItems: "center",
+        }}
+      >
+        <TouchableOpacity
+          onPress={() => onDone(item.id)}
+          style={{
+            backgroundColor: "#22c55e",
+            borderRadius: 10,
+            paddingVertical: 6,
+            paddingHorizontal: 12,
+          }}
+        >
+          <Text style={{ color: "white", fontWeight: "800" }}>
+            {item.done ? "취소" : "완료"}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => onRemove(item.id)}
+          style={{ marginLeft: 16 }}
+        >
+          <Feather name="trash-2" size={20} color="#cbd5e1" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+});
 
 export default function App() {
   const [tasks, setTasks] = useState([]);
   const [input, setInput] = useState("");
-  const [selectedCat, setSelectedCat] = useState("now"); // 기본 탭
+  const [selectedCat, setSelectedCat] = useState("short"); // 기본: 단기
   const [modalTask, setModalTask] = useState(null);
 
-  // 네비게이션 바 숨김
-  useEffect(() => {
-    NavigationBar.setVisibilityAsync("hidden");
-    NavigationBar.setBehaviorAsync("overlay-swipe");
-  }, []);
-
-  // 로드
+  // 로컬 로드
   useEffect(() => {
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (raw) setTasks(JSON.parse(raw));
-      } catch {
-        /* noop */
-      }
+      } catch {}
     })();
   }, []);
 
-  // 저장
+  // 저장 디바운스(I/O 절약)
+  const saveTimer = useRef(null);
   useEffect(() => {
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)).catch(() => {});
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)).catch(() => {});
+    }, 200);
+    return () => clearTimeout(saveTimer.current);
   }, [tasks]);
 
-  // 추가 (기본 카테고리 now)
-  const addTask = () => {
+  // 추가(기본 단기)
+  const addTask = useCallback(() => {
     const text = input.trim();
     if (!text) return;
     const t = {
@@ -66,75 +164,75 @@ export default function App() {
       text,
       done: false,
       createdAt: Date.now(),
-      category: "now",
+      category: "short",
+      steps: { done: 0, total: 0 },
     };
     setTasks((prev) => [t, ...prev]);
     setInput("");
-    setSelectedCat("now");
-  };
+    setSelectedCat("short");
+  }, [input]);
 
-  const openTask = (t) => setModalTask(t);
-  const closeModal = () => setModalTask(null);
+  const openTask = useCallback((t) => setModalTask(t), []);
+  const closeModal = useCallback(() => setModalTask(null), []);
 
-  const toggleDone = (id) => {
-    // 토글 전 상태를 보고 완료 탭으로 전환
-    const before = tasks.find((t) => t.id === id);
-    setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t))
-    );
-    if (before && !before.done) setSelectedCat("done");
-  };
+  const toggleDone = useCallback(
+    (id) => {
+      setTasks((prev) => {
+        const before = prev.find((t) => t.id === id);
+        const next = prev.map((t) =>
+          t.id === id ? { ...t, done: !t.done } : t
+        );
+        if (before && !before.done) setSelectedCat("done");
+        return next;
+      });
+    },
+    [setTasks]
+  );
 
-  const setCategory = (id, cat) => {
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === id ? { ...t, category: cat, done: false } : t
-      )
-    );
-    setSelectedCat(cat);
-    closeModal();
-  };
+  const setCategory = useCallback(
+    (id, cat) => {
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === id ? { ...t, category: cat, done: false } : t
+        )
+      );
+      setSelectedCat(cat);
+      closeModal();
+    },
+    [closeModal]
+  );
 
-  const removeTask = (id) => {
-    setTasks((prev) => prev.filter((t) => t.id !== id));
-    closeModal();
-  };
+  const removeTask = useCallback(
+    (id) => {
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      closeModal();
+    },
+    [closeModal]
+  );
 
-  // 탭 필터링
+  // 탭 필터
   const filtered = useMemo(() => {
     if (selectedCat === "done") return tasks.filter((t) => t.done);
     return tasks.filter((t) => !t.done && t.category === selectedCat);
   }, [tasks, selectedCat]);
 
-  const TaskItem = ({ item }) => (
-    <TouchableOpacity
-      onPress={() => openTask(item)}
-      onLongPress={() => removeTask(item.id)}
-      style={{
-        padding: 16,
-        marginVertical: 6,
-        borderRadius: 14,
-        backgroundColor: item.done ? "#e6ffe6" : "#eef2ff",
-        borderWidth: 1,
-        borderColor: item.done ? "#b7f0b7" : "#c7d2fe",
-      }}
-    >
-      <Text
-        style={{ fontSize: 17, fontWeight: "600", opacity: item.done ? 0.6 : 1 }}
-      >
-        {item.text}
-      </Text>
-      <Text style={{ marginTop: 4, fontSize: 12, opacity: 0.6 }}>
-        {item.done
-          ? "완료"
-          : { now: "당장", info: "정보", someday: "언젠가" }[item.category]}
-      </Text>
-    </TouchableOpacity>
+  // 렌더러 (메모된 TaskItem에 콜백 전달)
+  const renderItem = useCallback(
+    ({ item }) => (
+      <TaskItem
+        item={item}
+        onOpen={openTask}
+        onDone={toggleDone}
+        onRemove={removeTask}
+      />
+    ),
+    [openTask, toggleDone, removeTask]
   );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }}>
-      <StatusBar style="light" hidden />
+      {/* 전체화면 해제: 상태바 보이기 */}
+      <StatusBar style="light" />
 
       {/* 헤더 + 탭 */}
       <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 8 }}>
@@ -148,8 +246,9 @@ export default function App() {
           <Text style={{ color: "white", fontSize: 22, fontWeight: "800" }}>
             원하는-일 처리기
           </Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            {CATS.map((c) => (
+
+          <View style={{ flexDirection: "row" }}>
+            {CATS.map((c, idx) => (
               <Pressable
                 key={c.key}
                 onPress={() => setSelectedCat(c.key)}
@@ -159,9 +258,12 @@ export default function App() {
                   borderRadius: 12,
                   backgroundColor:
                     selectedCat === c.key ? "#111827" : "#1f2937",
+                  marginLeft: idx === 0 ? 0 : 8, // gap 호환
                 }}
               >
-                <Text style={{ color: "white", fontWeight: "700", fontSize: 12 }}>
+                <Text
+                  style={{ color: "white", fontWeight: "700", fontSize: 12 }}
+                >
                   {c.label}
                 </Text>
               </Pressable>
@@ -174,7 +276,7 @@ export default function App() {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={{ paddingHorizontal: 18, flexDirection: "row", gap: 8 }}>
+        <View style={{ paddingHorizontal: 18, flexDirection: "row" }}>
           <TextInput
             value={input}
             onChangeText={setInput}
@@ -200,6 +302,7 @@ export default function App() {
               borderRadius: 14,
               justifyContent: "center",
               alignItems: "center",
+              marginLeft: 8,
             }}
           >
             <Feather name="plus" size={22} color="white" />
@@ -212,10 +315,15 @@ export default function App() {
         <FlatList
           data={filtered}
           keyExtractor={(t) => t.id}
-          renderItem={TaskItem}
+          renderItem={renderItem}
+          initialNumToRender={10}
+          windowSize={7}
+          removeClippedSubviews
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
-            <Text style={{ color: "#9ca3af", marginTop: 30, textAlign: "center" }}>
+            <Text
+              style={{ color: "#9ca3af", marginTop: 30, textAlign: "center" }}
+            >
               {selectedCat === "done"
                 ? "완료한 항목이 없어요."
                 : "이 카테고리에 항목이 없어요."}
@@ -224,7 +332,7 @@ export default function App() {
         />
       </View>
 
-      {/* 상세 모달 */}
+      {/* 상세 모달 (카드형, 풀스크린 X) */}
       <Modal
         visible={!!modalTask}
         animationType="slide"
@@ -255,12 +363,14 @@ export default function App() {
                     alignItems: "center",
                   }}
                 >
-                  <Text style={{ color: "white", fontSize: 18, fontWeight: "800" }}>
+                  <Text
+                    style={{ color: "white", fontSize: 18, fontWeight: "800" }}
+                  >
                     항목 상세
                   </Text>
 
-                  {/* 상단 우측: 완료 + 3버튼 */}
-                  <View style={{ flexDirection: "row", gap: 8 }}>
+                  {/* 상단 우측: 완료 + (단기/정보/장기) */}
+                  <View style={{ flexDirection: "row" }}>
                     <TouchableOpacity
                       onPress={() => {
                         toggleDone(modalTask.id);
@@ -278,20 +388,21 @@ export default function App() {
                       </Text>
                     </TouchableOpacity>
 
-                    {["now", "info", "someday"].map((c) => (
+                    {["short", "info", "long"].map((k, idx) => (
                       <TouchableOpacity
-                        key={c}
-                        onPress={() => setCategory(modalTask.id, c)}
+                        key={k}
+                        onPress={() => setCategory(modalTask.id, k)}
                         style={{
                           backgroundColor:
-                            modalTask.category === c ? "#111827" : "#1f2937",
+                            modalTask.category === k ? "#111827" : "#1f2937",
                           paddingVertical: 6,
                           paddingHorizontal: 10,
                           borderRadius: 10,
+                          marginLeft: 8, // gap 호환
                         }}
                       >
                         <Text style={{ color: "white", fontWeight: "800" }}>
-                          {c === "now" ? "당장" : c === "info" ? "정보" : "언젠가"}
+                          {LABEL[k]}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -311,19 +422,13 @@ export default function App() {
                   </Text>
                   <Text style={{ color: "#9ca3af", marginTop: 6, fontSize: 12 }}>
                     상태: {modalTask.done ? "완료" : "진행중"} · 분류:{" "}
-                    {modalTask.done
-                      ? "완료"
-                      : { now: "당장", info: "정보", someday: "언젠가" }[
-                          modalTask.category
-                        ] || "-"}
+                    {modalTask.done ? "완료" : LABEL[modalTask.category] || "-"}
                   </Text>
                 </View>
 
-                <View style={{ marginTop: 14, flexDirection: "row", gap: 10 }}>
+                <View style={{ marginTop: 14, flexDirection: "row" }}>
                   <TouchableOpacity
-                    onPress={() => {
-                      removeTask(modalTask.id);
-                    }}
+                    onPress={() => removeTask(modalTask.id)}
                     style={{
                       backgroundColor: "#ef4444",
                       paddingVertical: 10,
@@ -331,7 +436,9 @@ export default function App() {
                       borderRadius: 10,
                     }}
                   >
-                    <Text style={{ color: "white", fontWeight: "800" }}>삭제</Text>
+                    <Text style={{ color: "white", fontWeight: "800" }}>
+                      삭제
+                    </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={closeModal}
@@ -340,9 +447,12 @@ export default function App() {
                       paddingVertical: 10,
                       paddingHorizontal: 14,
                       borderRadius: 10,
+                      marginLeft: 10,
                     }}
                   >
-                    <Text style={{ color: "white", fontWeight: "800" }}>닫기</Text>
+                    <Text style={{ color: "white", fontWeight: "800" }}>
+                      닫기
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </>
