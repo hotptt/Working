@@ -8,8 +8,7 @@ import React, {
   memo,
 } from "react";
 import {
-  SafeAreaView,
-  View,
+ View,
   Text,
   TextInput,
   TouchableOpacity,
@@ -17,8 +16,9 @@ import {
   Modal,
   Pressable,
   KeyboardAvoidingView,
-  Platform,
+  Platform
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 import { Feather } from "@expo/vector-icons";
