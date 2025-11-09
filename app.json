@@ -20,7 +20,7 @@
       "versionCode": 2,
       "permissions": [],
       "adaptiveIcon": {
-        "foregroundImage": "./adaptive-icon.png",
+        "foregroundImage": "./icon.png",
         "backgroundColor": "#000000"
       }
     },
