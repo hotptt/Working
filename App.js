@@ -1,5 +1,5 @@
 // App.js
-import React, {
+import React {
   useEffect,
   useMemo,
   useState,
