@@ -25,18 +25,6 @@
       }
     },
 
-    "androidStatusBar": {
-      "hidden": false,
-      "backgroundColor": "#000000",
-      "barStyle": "light-content"
-    },
-
-    "androidNavigationBar": {
-      "backgroundColor": "#000000",
-      "barStyle": "light-content",
-      "visible": "immersive"
-    },
-
     "extra": {
       "eas": {
         "projectId": "2612d90f-408f-460f-b6cc-674be44d1736"
