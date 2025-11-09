@@ -3,7 +3,7 @@
   "build": {
     "production": {
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
         "image": "latest",
         "autoIncrement": "versionCode"
       },
@@ -13,7 +13,7 @@
     },
     "preview": {
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
         "image": "latest",
         "autoIncrement": false
       },
